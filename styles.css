@@ -69,3 +69,15 @@ pre {
   border-radius: 8px;
   touch-action: none;
 }
+
+.iosHapticsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.iosSwitch {
+  width: 44px;
+  height: 28px;
+}

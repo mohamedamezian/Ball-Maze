@@ -15,6 +15,7 @@ const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
 const canvas = document.getElementById('gameCanvas');
+const hitSwitch = document.getElementById('hitSwitch');
 
 const ctx = canvas.getContext('2d');
 
@@ -31,6 +32,7 @@ let canvasHeight = 0;
 // Throttling/cooldowns
 let lastMotionMs = 0;
 let lastVibrateMs = 0;
+let lastSwitchToggleMs = 0;
 
 // Platform quirks
 // iOS en Android verschillen soms in hoe accelG.x/y aanvoelt in de praktijk.
@@ -65,6 +67,7 @@ const SETTINGS = {
   minImpactSpeedForVibrate: 220, // geen vibratie bij hele zachte tik
   vibrateCooldownMs: 90, // voorkom vibrate-spam als je tegen een muur “ratelt”
   motionSampleEveryMs: 16, // ~60Hz input sampling
+  switchCooldownMs: 120, // voorkom switch-spam (iOS experiment)
 };
 
 function setStatus(message) {
@@ -191,6 +194,25 @@ function vibrateIfSupported(ms) {
   }
 }
 
+function toggleHitSwitchIfIOS() {
+  // Best-effort: sommige bronnen claimen haptics op iOS bij een native switch toggle.
+  // Programmatic toggles zijn NIET gegarandeerd dat ze haptics geven.
+  if (!isIOS) return;
+  if (!hitSwitch) return;
+
+  const now = performance.now();
+  if (now - lastSwitchToggleMs < SETTINGS.switchCooldownMs) return;
+  lastSwitchToggleMs = now;
+
+  try {
+    // click() toggelt de checkbox state (en volgt het native event pad)
+    hitSwitch.click();
+  } catch {
+    // fallback
+    hitSwitch.checked = !hitSwitch.checked;
+  }
+}
+
 function draw() {
   if (needsResize) resizeCanvasToDisplaySize();
   if (!inkColor) updateInkColor();
@@ -277,6 +299,9 @@ function step(frameMs) {
       lastVibrateMs = now;
       vibrateIfSupported(SETTINGS.vibrateMs);
     }
+
+    // iOS haptics experiment
+    toggleHitSwitchIfIOS();
   }
 
   draw();
