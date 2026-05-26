@@ -28,6 +28,11 @@ let needsResize = true;
 let canvasWidth = 0;
 let canvasHeight = 0;
 
+// Maze (scaled to current canvas size)
+let mazeWalls = [];
+let goalRect = null;
+let hasWon = false;
+
 // Throttling/cooldowns
 let lastMotionMs = 0;
 let lastVibrateMs = 0;
@@ -53,6 +58,30 @@ const ball = {
   vx: 0,
   vy: 0,
   r: 18,
+};
+
+/*
+  Maze definition in normalized coordinates (0..1)
+  - Walls are axis-aligned rectangles.
+  - Goal is a rectangle. When the ball center enters the goal, you win.
+*/
+const MAZE_NORM = {
+  // Outer border is handled separately; these are inner walls.
+  walls: [
+    // A few simple corridors
+    { x: 0.08, y: 0.12, w: 0.62, h: 0.04 },
+    { x: 0.20, y: 0.24, w: 0.72, h: 0.04 },
+    { x: 0.08, y: 0.36, w: 0.62, h: 0.04 },
+    { x: 0.20, y: 0.48, w: 0.72, h: 0.04 },
+    { x: 0.08, y: 0.60, w: 0.62, h: 0.04 },
+
+    // Vertical connectors (create turns)
+    { x: 0.08, y: 0.12, w: 0.04, h: 0.52 },
+    { x: 0.66, y: 0.12, w: 0.04, h: 0.28 },
+    { x: 0.20, y: 0.24, w: 0.04, h: 0.52 },
+    { x: 0.88, y: 0.24, w: 0.04, h: 0.28 },
+  ],
+  goal: { x: 0.82, y: 0.78, w: 0.12, h: 0.14 },
 };
 
 // Tuning (bewust simpel gehouden)
@@ -111,6 +140,29 @@ function updateInkColor() {
   inkColor = getComputedStyle(document.body).color;
 }
 
+function recomputeMaze() {
+  // Scale normalized maze to current canvas size.
+  // Small padding from outer border (which is drawn at 1..width-2).
+  const pad = 6;
+  const w = Math.max(1, canvasWidth - pad * 2);
+  const h = Math.max(1, canvasHeight - pad * 2);
+
+  mazeWalls = MAZE_NORM.walls.map((r) => ({
+    x: pad + r.x * w,
+    y: pad + r.y * h,
+    w: r.w * w,
+    h: r.h * h,
+  }));
+
+  const g = MAZE_NORM.goal;
+  goalRect = {
+    x: pad + g.x * w,
+    y: pad + g.y * h,
+    w: g.w * w,
+    h: g.h * h,
+  };
+}
+
 function resizeCanvasToDisplaySize() {
   // Houd canvas scherp op high-dpi schermen
   const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -128,14 +180,18 @@ function resizeCanvasToDisplaySize() {
   canvasWidth = canvas.width;
   canvasHeight = canvas.height;
   needsResize = false;
+
+  recomputeMaze();
 }
 
 function resetBallToCenter() {
   if (needsResize) resizeCanvasToDisplaySize();
   ball.x = canvasWidth / 2;
-  ball.y = canvasHeight / 2;
+  // Start near top-left so there's something to navigate.
+  ball.y = canvasHeight * 0.08 + ball.r;
   ball.vx = 0;
   ball.vy = 0;
+  hasWon = false;
 }
 
 async function requestIOSPermissionIfNeeded() {
@@ -191,6 +247,55 @@ function vibrateIfSupported(ms) {
   }
 }
 
+function pointInRect(px, py, rect) {
+  return px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h;
+}
+
+function resolveCircleRectCollision(rect) {
+  // Axis-aligned rect vs circle (ball). If overlapping, push ball out on the minimum-penetration axis.
+  const bx = ball.x;
+  const by = ball.y;
+  const r = ball.r;
+
+  const insideX = bx + r > rect.x && bx - r < rect.x + rect.w;
+  const insideY = by + r > rect.y && by - r < rect.y + rect.h;
+  if (!insideX || !insideY) return 0;
+
+  const penLeft = bx + r - rect.x;
+  const penRight = rect.x + rect.w - (bx - r);
+  const penTop = by + r - rect.y;
+  const penBottom = rect.y + rect.h - (by - r);
+
+  const minPenX = Math.min(penLeft, penRight);
+  const minPenY = Math.min(penTop, penBottom);
+
+  let impactSpeed = 0;
+
+  if (minPenX < minPenY) {
+    // Resolve on X
+    if (penLeft < penRight) {
+      impactSpeed = Math.abs(ball.vx);
+      ball.x -= penLeft;
+    } else {
+      impactSpeed = Math.abs(ball.vx);
+      ball.x += penRight;
+    }
+    ball.vx = -ball.vx * SETTINGS.restitution;
+  } else {
+    // Resolve on Y
+    if (penTop < penBottom) {
+      impactSpeed = Math.abs(ball.vy);
+      ball.y -= penTop;
+    } else {
+      impactSpeed = Math.abs(ball.vy);
+      ball.y += penBottom;
+    }
+    ball.vy = -ball.vy * SETTINGS.restitution;
+  }
+
+  return impactSpeed;
+}
+
 function draw() {
   if (needsResize) resizeCanvasToDisplaySize();
   if (!inkColor) updateInkColor();
@@ -203,6 +308,23 @@ function draw() {
   ctx.setLineDash([]);
   ctx.strokeStyle = inkColor;
   ctx.strokeRect(1, 1, canvasWidth - 2, canvasHeight - 2);
+
+  // Maze walls
+  ctx.fillStyle = inkColor;
+  for (const w of mazeWalls) {
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+  }
+
+  // Goal (drawn as outline so it doesn't look like a wall)
+  if (goalRect) {
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(goalRect.x, goalRect.y, goalRect.w, goalRect.h);
+    ctx.globalAlpha = 1;
+
+    ctx.font = '14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    ctx.fillText('GOAL', goalRect.x + 8, goalRect.y + 18);
+  }
 
   // Bal
   ctx.fillStyle = inkColor;
@@ -279,6 +401,28 @@ function step(frameMs) {
     }
   }
 
+  // Maze wall collisions
+  let wallImpact = 0;
+  for (const rect of mazeWalls) {
+    wallImpact = Math.max(wallImpact, resolveCircleRectCollision(rect));
+  }
+
+  if (wallImpact > SETTINGS.minImpactSpeedForVibrate) {
+    const now = performance.now();
+    if (now - lastVibrateMs > SETTINGS.vibrateCooldownMs) {
+      lastVibrateMs = now;
+      vibrateIfSupported(SETTINGS.vibrateMs);
+    }
+  }
+
+  // Win condition
+  if (!hasWon && goalRect && pointInRect(ball.x, ball.y, goalRect)) {
+    hasWon = true;
+    ball.vx = 0;
+    ball.vy = 0;
+    setStatus('Finished!');
+  }
+
   draw();
   rafId = window.requestAnimationFrame(step);
 }
@@ -315,6 +459,7 @@ async function start() {
   tiltAx = 0;
   tiltAy = 0;
   lastFrameMs = null;
+  hasWon = false;
 
   attachListeners();
   resetBallToCenter();
