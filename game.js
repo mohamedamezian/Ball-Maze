@@ -30,6 +30,7 @@ let canvasHeight = 0;
 
 // Maze (scaled to current canvas size)
 let mazeWalls = [];
+let startRect = null;
 let goalRect = null;
 let hasWon = false;
 
@@ -63,25 +64,29 @@ const ball = {
 /*
   Maze definition in normalized coordinates (0..1)
   - Walls are axis-aligned rectangles.
-  - Goal is a rectangle. When the ball center enters the goal, you win.
+  - Start and goal are rectangles (visual zones; not colliders).
 */
 const MAZE_NORM = {
   // Outer border is handled separately; these are inner walls.
   walls: [
-    // A few simple corridors
-    { x: 0.08, y: 0.12, w: 0.62, h: 0.04 },
-    { x: 0.20, y: 0.24, w: 0.72, h: 0.04 },
-    { x: 0.08, y: 0.36, w: 0.62, h: 0.04 },
-    { x: 0.20, y: 0.48, w: 0.72, h: 0.04 },
-    { x: 0.08, y: 0.60, w: 0.62, h: 0.04 },
+    // Snake maze: alternating horizontal bars force left-right-left-right movement.
+    // Gaps alternate (right, left, right, ...).
+    { x: 0.04, y: 0.16, w: 0.78, h: 0.035 },
+    { x: 0.18, y: 0.28, w: 0.78, h: 0.035 },
+    { x: 0.04, y: 0.40, w: 0.78, h: 0.035 },
+    { x: 0.18, y: 0.52, w: 0.78, h: 0.035 },
+    { x: 0.04, y: 0.64, w: 0.78, h: 0.035 },
+    { x: 0.18, y: 0.76, w: 0.78, h: 0.035 },
 
-    // Vertical connectors (create turns)
-    { x: 0.08, y: 0.12, w: 0.04, h: 0.52 },
-    { x: 0.66, y: 0.12, w: 0.04, h: 0.28 },
-    { x: 0.20, y: 0.24, w: 0.04, h: 0.52 },
-    { x: 0.88, y: 0.24, w: 0.04, h: 0.28 },
+    // Extra obstacles (short vertical stubs) to make it less trivial.
+    { x: 0.54, y: 0.20, w: 0.035, h: 0.07 },
+    { x: 0.34, y: 0.32, w: 0.035, h: 0.07 },
+    { x: 0.64, y: 0.44, w: 0.035, h: 0.07 },
+    { x: 0.26, y: 0.56, w: 0.035, h: 0.07 },
+    { x: 0.58, y: 0.68, w: 0.035, h: 0.07 },
   ],
-  goal: { x: 0.82, y: 0.78, w: 0.12, h: 0.14 },
+  start: { x: 0.80, y: 0.04, w: 0.16, h: 0.10 },
+  goal: { x: 0.04, y: 0.86, w: 0.16, h: 0.10 },
 };
 
 // Tuning (bewust simpel gehouden)
@@ -154,6 +159,14 @@ function recomputeMaze() {
     h: r.h * h,
   }));
 
+  const s = MAZE_NORM.start;
+  startRect = {
+    x: pad + s.x * w,
+    y: pad + s.y * h,
+    w: s.w * w,
+    h: s.h * h,
+  };
+
   const g = MAZE_NORM.goal;
   goalRect = {
     x: pad + g.x * w,
@@ -186,9 +199,16 @@ function resizeCanvasToDisplaySize() {
 
 function resetBallToCenter() {
   if (needsResize) resizeCanvasToDisplaySize();
-  ball.x = canvasWidth / 2;
-  // Start near top-left so there's something to navigate.
-  ball.y = canvasHeight * 0.08 + ball.r;
+
+  // Start inside the start zone (top-right).
+  if (startRect) {
+    ball.x = startRect.x + startRect.w / 2;
+    ball.y = startRect.y + startRect.h / 2;
+  } else {
+    ball.x = canvasWidth - ball.r - 12;
+    ball.y = ball.r + 12;
+  }
+
   ball.vx = 0;
   ball.vy = 0;
   hasWon = false;
@@ -249,6 +269,15 @@ function vibrateIfSupported(ms) {
 
 function pointInRect(px, py, rect) {
   return px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h;
+}
+
+function circleIntersectsRect(cx, cy, cr, rect) {
+  // Standard closest-point check.
+  const closestX = clamp(cx, rect.x, rect.x + rect.w);
+  const closestY = clamp(cy, rect.y, rect.y + rect.h);
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return dx * dx + dy * dy <= cr * cr;
 }
 
 function resolveCircleRectCollision(rect) {
@@ -315,14 +344,45 @@ function draw() {
     ctx.fillRect(w.x, w.y, w.w, w.h);
   }
 
-  // Goal (drawn as outline so it doesn't look like a wall)
-  if (goalRect) {
-    ctx.globalAlpha = 0.9;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(goalRect.x, goalRect.y, goalRect.w, goalRect.h);
+  // Start zone (visual only)
+  if (startRect) {
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = inkColor;
+    ctx.fillRect(startRect.x, startRect.y, startRect.w, startRect.h);
     ctx.globalAlpha = 1;
 
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = inkColor;
+    ctx.strokeRect(startRect.x, startRect.y, startRect.w, startRect.h);
+    ctx.setLineDash([]);
+
     ctx.font = '14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    ctx.fillStyle = inkColor;
+    ctx.fillText('START', startRect.x + 8, startRect.y + 18);
+  }
+
+  // Goal (turns green on win)
+  if (goalRect) {
+    if (hasWon) {
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = '#00c853';
+      ctx.fillRect(goalRect.x, goalRect.y, goalRect.w, goalRect.h);
+      ctx.globalAlpha = 1;
+
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#00c853';
+      ctx.strokeRect(goalRect.x, goalRect.y, goalRect.w, goalRect.h);
+    } else {
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = inkColor;
+      ctx.strokeRect(goalRect.x, goalRect.y, goalRect.w, goalRect.h);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.font = '14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    ctx.fillStyle = inkColor;
     ctx.fillText('GOAL', goalRect.x + 8, goalRect.y + 18);
   }
 
@@ -416,11 +476,14 @@ function step(frameMs) {
   }
 
   // Win condition
-  if (!hasWon && goalRect && pointInRect(ball.x, ball.y, goalRect)) {
+  if (!hasWon && goalRect && circleIntersectsRect(ball.x, ball.y, ball.r, goalRect)) {
     hasWon = true;
     ball.vx = 0;
     ball.vy = 0;
+    tiltAx = 0;
+    tiltAy = 0;
     setStatus('Finished!');
+    draw();
   }
 
   draw();
