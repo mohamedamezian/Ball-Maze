@@ -40,3 +40,24 @@ pre {
   border-radius: 8px;
   overflow: auto;
 }
+
+.charts {
+  display: grid;
+  gap: 16px;
+}
+
+.chartSection h3 {
+  margin: 12px 0 8px;
+}
+
+.chart {
+  width: 100%;
+  display: block;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+}
+
+.hint {
+  opacity: 0.8;
+  margin: 8px 0;
+}

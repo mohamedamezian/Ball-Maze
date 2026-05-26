@@ -10,17 +10,9 @@ Kleine webapp die live `DeviceMotion` (acceleratie/rotatie) uitleest en op het s
 
 ## Idee om dit op je mobiel te gebruiken
 
-1. Host deze repo via **GitHub Pages** (HTTPS).
-2. Open de URL op je telefoon.
-3. Tik op **Start** en geef permissie (vooral op iPhone/iPad).
-4. Voeg toe aan je startscherm:
-	- iOS Safari: Share → Add to Home Screen
-	- Android Chrome: menu → Add to Home screen
+Navigeer naar https://ball-maze-chi.vercel.app
 
 ## Belangrijk (waarom HTTPS)
 
 Veel browsers laten sensoren alleen toe in een **secure context**:
-
-- ✅ `https://...`
-- ✅ `http://localhost/...` (alleen op hetzelfde apparaat)
-- ❌ `file://...` (meestal geen sensoren)
+`https://...`

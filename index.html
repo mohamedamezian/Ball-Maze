@@ -27,6 +27,25 @@
       <!-- Output blokken (app.js vult deze in) -->
       <h2>DeviceMotion</h2>
       <pre id="motionOut">(nog geen data)</pre>
+
+      <!-- Grafieken: laatste 5 seconden DeviceMotion -->
+      <h2>Grafieken (laatste 5s)</h2>
+      <p class="hint">
+        De lijnen gebruiken verschillende streepjes (geen kleuren): solid = X/alpha, dashed = Y/beta, dotted = Z/gamma.
+      </p>
+
+      <div class="charts">
+        <section class="chartSection" aria-label="Acceleratie grafiek">
+          <h3>AccelerationIncludingGravity (m/s²)</h3>
+          <canvas id="accelChart" class="chart" height="180"></canvas>
+        </section>
+
+        <section class="chartSection" aria-label="Rotatie grafiek">
+          <h3>RotationRate (deg/s)</h3>
+          <canvas id="rotChart" class="chart" height="180"></canvas>
+          <p class="hint" id="rotHint"></p>
+        </section>
+      </div>
     </main>
 
     <!-- JS apart houden (app.js). Defer zodat de DOM al bestaat. -->
