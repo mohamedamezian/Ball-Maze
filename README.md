@@ -1,11 +1,26 @@
-# Hello World webapp
+# Telefoon sensordata webapp
 
-Dit project is expres zo klein mogelijk.
+Kleine webapp die live `DeviceMotion` (acceleratie/rotatie) uitleest en op het scherm toont.
 
-## Openen
+## Bestanden
 
-- Dubbelklik op `index.html` (op Windows opent dit meestal in je browser).
+- `index.html` – markup
+- `styles.css` – styling
+- `app.js` – DeviceMotion logica
 
-## Lokaal serveren
+## Idee om dit op je mobiel te gebruiken
 
-Gebruik live server of Node/Python om een local server te starten
+1. Host deze repo via **GitHub Pages** (HTTPS).
+2. Open de URL op je telefoon.
+3. Tik op **Start** en geef permissie (vooral op iPhone/iPad).
+4. Voeg toe aan je startscherm:
+	- iOS Safari: Share → Add to Home Screen
+	- Android Chrome: menu → Add to Home screen
+
+## Belangrijk (waarom HTTPS)
+
+Veel browsers laten sensoren alleen toe in een **secure context**:
+
+- ✅ `https://...`
+- ✅ `http://localhost/...` (alleen op hetzelfde apparaat)
+- ❌ `file://...` (meestal geen sensoren)

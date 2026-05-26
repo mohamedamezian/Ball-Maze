@@ -3,10 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hello World</title>
+    <title>Telefoon sensordata</title>
+    <!-- CSS apart houden (styles.css) -->
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <h1>Hello World</h1>
-    <p>Dit is een super simpele webapp.</p>
+    <main>
+      <h1>Telefoon sensordata (live)</h1>
+      <p>
+        Open deze pagina op je telefoon en klik op <strong>Start</strong> om sensordata live uit te lezen.
+        Op iPhone/iPad moet je permissie geven na een klik.
+      </p>
+
+      <!-- Knoppen: de JS hangt hieraan in app.js -->
+      <div class="controls">
+        <button id="startBtn" type="button">Start</button>
+        <button id="stopBtn" type="button" disabled>Stop</button>
+      </div>
+
+      <!-- Statusregel (permissies/secure-context tips) -->
+      <p id="status" aria-live="polite"></p>
+
+      <!-- Output blokken (app.js vult deze in) -->
+      <h2>DeviceMotion</h2>
+      <pre id="motionOut">(nog geen data)</pre>
+    </main>
+
+    <!-- JS apart houden (app.js). Defer zodat de DOM al bestaat. -->
+    <script src="./app.js" defer></script>
   </body>
 </html>
