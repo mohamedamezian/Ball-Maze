@@ -15,7 +15,6 @@ const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
 const canvas = document.getElementById('gameCanvas');
-const hitSwitch = document.getElementById('hitSwitch');
 
 const ctx = canvas.getContext('2d');
 
@@ -32,29 +31,12 @@ let canvasHeight = 0;
 // Throttling/cooldowns
 let lastMotionMs = 0;
 let lastVibrateMs = 0;
-let lastSwitchToggleMs = 0;
 
 // Platform quirks
 // iOS en Android verschillen soms in hoe accelG.x/y aanvoelt in de praktijk.
 // We houden dit bewust simpel: Android/others -> flip X (zoals eerder nodig), iOS -> flip Y.
 const isIOS =
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-function isLikelyInAppBrowser() {
-  // Niet perfect, maar helpt bij Discord/Instagram/etc.
-  const ua = navigator.userAgent || '';
-  return /(Discord|Instagram|FBAN|FBAV|FB_IAB|Line\/|Twitter|TikTok|Snapchat)/i.test(ua);
-}
-
-function permissionHelpTextIOS() {
-  // Houd dit kort en praktisch (statusregel).
-  const bits = [
-    'iOS tip: open deze pagina in Safari (geen in-app browser).',
-    'Check ook: Instellingen → Safari → Motion & Orientation Access (aan).',
-    'Herlaad daarna de pagina en tik opnieuw op Start.',
-  ];
-  return bits.join(' ');
-}
 
 const AXIS = isIOS
   ? { invertX: false, invertY: true }
@@ -83,7 +65,6 @@ const SETTINGS = {
   minImpactSpeedForVibrate: 220, // geen vibratie bij hele zachte tik
   vibrateCooldownMs: 90, // voorkom vibrate-spam als je tegen een muur “ratelt”
   motionSampleEveryMs: 16, // ~60Hz input sampling
-  switchCooldownMs: 120, // voorkom switch-spam (iOS experiment)
 };
 
 function setStatus(message) {
@@ -210,25 +191,6 @@ function vibrateIfSupported(ms) {
   }
 }
 
-function toggleHitSwitchIfIOS() {
-  // Best-effort: sommige bronnen claimen haptics op iOS bij een native switch toggle.
-  // Programmatic toggles zijn NIET gegarandeerd dat ze haptics geven.
-  if (!isIOS) return;
-  if (!hitSwitch) return;
-
-  const now = performance.now();
-  if (now - lastSwitchToggleMs < SETTINGS.switchCooldownMs) return;
-  lastSwitchToggleMs = now;
-
-  try {
-    // click() toggelt de checkbox state (en volgt het native event pad)
-    hitSwitch.click();
-  } catch {
-    // fallback
-    hitSwitch.checked = !hitSwitch.checked;
-  }
-}
-
 function draw() {
   if (needsResize) resizeCanvasToDisplaySize();
   if (!inkColor) updateInkColor();
@@ -315,9 +277,6 @@ function step(frameMs) {
       lastVibrateMs = now;
       vibrateIfSupported(SETTINGS.vibrateMs);
     }
-
-    // iOS haptics experiment
-    toggleHitSwitchIfIOS();
   }
 
   draw();
@@ -335,24 +294,15 @@ function detachListeners() {
 async function start() {
   if (running) return;
 
-  // iOS kan zonder secure context geen sensoren geven; voorkom verwarrende “denied” situaties.
-  if (isIOS && !window.isSecureContext) {
-    setStatus('iOS vereist HTTPS om sensoren te gebruiken. Open via een https:// URL.');
-    return;
+  if (!window.isSecureContext) {
+    setStatus('Tip: gebruik HTTPS of localhost voor sensoren.');
+  } else {
+    setStatus('');
   }
-
-  if (!window.isSecureContext) setStatus('Tip: gebruik HTTPS of localhost voor sensoren.');
-  else setStatus('');
 
   const permission = await requestIOSPermissionIfNeeded();
   if (!permission.ok) {
-    if (isIOS) {
-      const inApp = isLikelyInAppBrowser();
-      const extra = inApp ? ' (je lijkt in een in-app browser te zitten)' : '';
-      setStatus(`Geen toegang tot sensoren${extra}: ${permission.details}. ${permissionHelpTextIOS()}`);
-    } else {
-      setStatus(`Geen toegang tot sensoren: ${permission.details}`);
-    }
+    setStatus(`Geen toegang tot sensoren: ${permission.details}`);
     return;
   }
 

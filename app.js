@@ -38,22 +38,6 @@ let lastSampleMs = 0;
 
 let rafId = null;
 
-const isIOS =
-  /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-function isLikelyInAppBrowser() {
-  const ua = navigator.userAgent || '';
-  return /(Discord|Instagram|FBAN|FBAV|FB_IAB|Line\/|Twitter|TikTok|Snapchat)/i.test(ua);
-}
-
-function permissionHelpTextIOS() {
-  return (
-    'iOS tip: open in Safari (geen in-app browser). ' +
-    'Check: Instellingen → Safari → Motion & Orientation Access (aan). ' +
-    'Herlaad en tik opnieuw op Start.'
-  );
-}
-
 function setStatus(message) {
   statusEl.textContent = message;
 }
@@ -390,24 +374,17 @@ async function start() {
   if (running) return;
 
   // Tip: zonder secure context werkt dit vaak niet.
-  if (isIOS && !window.isSecureContext) {
-    setStatus('iOS vereist HTTPS om sensoren te gebruiken. Open via een https:// URL.');
-    return;
+  if (!window.isSecureContext) {
+    setStatus('Tip: serveer via HTTPS of localhost voor sensoren.');
+  } else {
+    setStatus('');
   }
-
-  if (!window.isSecureContext) setStatus('Tip: serveer via HTTPS of localhost voor sensoren.');
-  else setStatus('');
 
   try {
     // iOS permissie flow (moet na klik).
     const permission = await requestIOSPermissionIfNeeded();
     if (!permission.ok) {
-      if (isIOS) {
-        const extra = isLikelyInAppBrowser() ? ' (je lijkt in een in-app browser te zitten)' : '';
-        setStatus(`Permissie geweigerd/geen toegang${extra}: ${permission.details}. ${permissionHelpTextIOS()}`);
-      } else {
-        setStatus(`Permissie geweigerd/geen toegang: ${permission.details}`);
-      }
+      setStatus(`Permissie geweigerd/geen toegang: ${permission.details}`);
       return;
     }
 

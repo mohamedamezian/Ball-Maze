@@ -25,17 +25,6 @@
 
       <p id="status" aria-live="polite"></p>
 
-      <!--
-        iOS haptics experiment:
-        iOS Safari ondersteunt navigator.vibrate() meestal niet.
-        Sommige bronnen claimen dat het togglen van een native 'switch' haptics kan geven.
-        Dit is niet gegarandeerd, maar we kunnen het als indicator/experiment gebruiken.
-      -->
-      <div class="iosHapticsRow" aria-label="iOS haptics experiment">
-        <input id="hitSwitch" class="iosSwitch" type="checkbox" role="switch" aria-label="Wall hit switch" />
-        <span class="hint">Wall-hit switch (iOS experiment)</span>
-      </div>
-
       <canvas id="gameCanvas" class="gameCanvas" height="520"></canvas>
 
       <p class="hint">
