@@ -61,3 +61,11 @@ pre {
   opacity: 0.8;
   margin: 8px 0;
 }
+
+.gameCanvas {
+  width: 100%;
+  display: block;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  touch-action: none;
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ball Maze (simple)</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <p>
+        <a href="./index.html">← Terug</a>
+      </p>
+
+      <h1>Ball Maze (simple)</h1>
+      <p>
+        Tik op <strong>Start</strong> en kantel je telefoon om de bal te bewegen.
+        Bij het raken van een muur trilt je telefoon (als vibratie ondersteund is).
+      </p>
+
+      <div class="controls">
+        <button id="startBtn" type="button">Start</button>
+        <button id="stopBtn" type="button" disabled>Stop</button>
+      </div>
+
+      <p id="status" aria-live="polite"></p>
+
+      <canvas id="gameCanvas" class="gameCanvas" height="520"></canvas>
+
+      <p class="hint">
+        Tip: sensoren werken vaak alleen via HTTPS (of localhost) en je moet permissie geven op iOS.
+      </p>
+    </main>
+
+    <script src="./game.js" defer></script>
+  </body>
+</html>
