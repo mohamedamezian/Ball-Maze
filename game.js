@@ -32,6 +32,16 @@ let canvasHeight = 0;
 let lastMotionMs = 0;
 let lastVibrateMs = 0;
 
+// Platform quirks
+// iOS en Android verschillen soms in hoe accelG.x/y aanvoelt in de praktijk.
+// We houden dit bewust simpel: Android/others -> flip X (zoals eerder nodig), iOS -> geen flips.
+const isIOS =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+const AXIS = isIOS
+  ? { invertX: false, invertY: false }
+  : { invertX: true, invertY: false };
+
 // Laatste sensorwaarden (m/s^2)
 let tiltAx = 0;
 let tiltAy = 0;
@@ -63,6 +73,37 @@ function setStatus(message) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function getScreenAngle() {
+  // iOS gebruikt vaak window.orientation (deprecated), andere browsers screen.orientation.angle
+  const angle =
+    (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.angle === 'number'
+      ? screen.orientation.angle
+      : typeof window.orientation === 'number'
+        ? window.orientation
+        : 0) || 0;
+
+  // Normaliseer naar 0/90/180/270
+  const norm = ((angle % 360) + 360) % 360;
+  if (norm < 45 || norm >= 315) return 0;
+  if (norm >= 45 && norm < 135) return 90;
+  if (norm >= 135 && norm < 225) return 180;
+  return 270;
+}
+
+function mapAccelToScreenAxes(ax, ay, angle) {
+  // Remap zodat “links op het scherm” altijd links blijft, ook in landscape.
+  switch (angle) {
+    case 90:
+      return { x: ay, y: -ax };
+    case 180:
+      return { x: -ax, y: -ay };
+    case 270:
+      return { x: -ay, y: ax };
+    default:
+      return { x: ax, y: ay };
+  }
 }
 
 function updateInkColor() {
@@ -129,14 +170,20 @@ function onMotion(event) {
 
   // In de praktijk is accelG.x/y genoeg voor ‘tilt’.
   // (Assumptie: telefoon in portrait; bij landscape kan mapping anders voelen.)
-  // Links/rechts voelt vaak “inverted” door de device coordinate richting.
-  // We flippen daarom de X-as, maar laten Y ongemoeid.
-  tiltAx = Number.isFinite(accelG.x) ? -accelG.x : 0;
-  tiltAy = Number.isFinite(accelG.y) ? accelG.y : 0;
+  const rawX = Number.isFinite(accelG.x) ? accelG.x : 0;
+  const rawY = Number.isFinite(accelG.y) ? accelG.y : 0;
+
+  // Eerst remap op basis van scherm-rotatie, daarna platform flips.
+  const angle = getScreenAngle();
+  const mapped = mapAccelToScreenAxes(rawX, rawY, angle);
+
+  tiltAx = AXIS.invertX ? -mapped.x : mapped.x;
+  tiltAy = AXIS.invertY ? -mapped.y : mapped.y;
 }
 
 function vibrateIfSupported(ms) {
-  if (!('vibrate' in navigator)) return;
+  // iOS Safari ondersteunt vibrate meestal niet; we falen hier stil.
+  if (typeof navigator.vibrate !== 'function') return;
   try {
     navigator.vibrate(ms);
   } catch {
