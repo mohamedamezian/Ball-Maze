@@ -129,7 +129,9 @@ function onMotion(event) {
 
   // In de praktijk is accelG.x/y genoeg voor ‘tilt’.
   // (Assumptie: telefoon in portrait; bij landscape kan mapping anders voelen.)
-  tiltAx = Number.isFinite(accelG.x) ? accelG.x : 0;
+  // Links/rechts voelt vaak “inverted” door de device coordinate richting.
+  // We flippen daarom de X-as, maar laten Y ongemoeid.
+  tiltAx = Number.isFinite(accelG.x) ? -accelG.x : 0;
   tiltAy = Number.isFinite(accelG.y) ? accelG.y : 0;
 }
 
