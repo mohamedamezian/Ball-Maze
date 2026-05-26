@@ -22,6 +22,16 @@ let running = false;
 let rafId = null;
 let lastFrameMs = null;
 
+// Rendering/cache
+let inkColor = null;
+let needsResize = true;
+let canvasWidth = 0;
+let canvasHeight = 0;
+
+// Throttling/cooldowns
+let lastMotionMs = 0;
+let lastVibrateMs = 0;
+
 // Laatste sensorwaarden (m/s^2)
 let tiltAx = 0;
 let tiltAy = 0;
@@ -43,6 +53,8 @@ const SETTINGS = {
   maxSpeed: 1400, // cap om ‘escape velocity’ te voorkomen
   vibrateMs: 25, // vibratie bij muur-hit
   minImpactSpeedForVibrate: 220, // geen vibratie bij hele zachte tik
+  vibrateCooldownMs: 90, // voorkom vibrate-spam als je tegen een muur “ratelt”
+  motionSampleEveryMs: 16, // ~60Hz input sampling
 };
 
 function setStatus(message) {
@@ -51,6 +63,11 @@ function setStatus(message) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function updateInkColor() {
+  // Vermijd getComputedStyle per frame.
+  inkColor = getComputedStyle(document.body).color;
 }
 
 function resizeCanvasToDisplaySize() {
@@ -67,13 +84,15 @@ function resizeCanvasToDisplaySize() {
     canvas.height = targetHeight;
   }
 
-  return { dpr, width: canvas.width, height: canvas.height };
+  canvasWidth = canvas.width;
+  canvasHeight = canvas.height;
+  needsResize = false;
 }
 
 function resetBallToCenter() {
-  const { width, height } = resizeCanvasToDisplaySize();
-  ball.x = width / 2;
-  ball.y = height / 2;
+  if (needsResize) resizeCanvasToDisplaySize();
+  ball.x = canvasWidth / 2;
+  ball.y = canvasHeight / 2;
   ball.vx = 0;
   ball.vy = 0;
 }
@@ -100,6 +119,11 @@ async function requestIOSPermissionIfNeeded() {
 }
 
 function onMotion(event) {
+  // Sommige devices sturen heel hoge frequenties. Sampling op ~60Hz is ruim genoeg.
+  const t = event.timeStamp || performance.now();
+  if (t - lastMotionMs < SETTINGS.motionSampleEveryMs) return;
+  lastMotionMs = t;
+
   const accelG = event.accelerationIncludingGravity;
   if (!accelG) return;
 
@@ -119,19 +143,20 @@ function vibrateIfSupported(ms) {
 }
 
 function draw() {
-  const { width, height } = resizeCanvasToDisplaySize();
+  if (needsResize) resizeCanvasToDisplaySize();
+  if (!inkColor) updateInkColor();
 
   // Achtergrond
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
   // Border (maze “muren”)
   ctx.lineWidth = 2;
   ctx.setLineDash([]);
-  ctx.strokeStyle = getComputedStyle(document.body).color;
-  ctx.strokeRect(1, 1, width - 2, height - 2);
+  ctx.strokeStyle = inkColor;
+  ctx.strokeRect(1, 1, canvasWidth - 2, canvasHeight - 2);
 
   // Bal
-  ctx.fillStyle = getComputedStyle(document.body).color;
+  ctx.fillStyle = inkColor;
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
   ctx.fill();
@@ -144,7 +169,7 @@ function step(frameMs) {
   const dt = clamp((frameMs - lastFrameMs) / 1000, 0, 0.05); // cap dt
   lastFrameMs = frameMs;
 
-  const { width, height } = resizeCanvasToDisplaySize();
+  if (needsResize) resizeCanvasToDisplaySize();
 
   // Versnelling vanuit tilt (m/s^2) -> px/s^2
   // Canvas heeft y naar beneden positief.
@@ -178,9 +203,9 @@ function step(frameMs) {
     ball.x = ball.r + 2;
     ball.vx = -ball.vx * SETTINGS.restitution;
     hit = true;
-  } else if (ball.x + ball.r > width - 2) {
+  } else if (ball.x + ball.r > canvasWidth - 2) {
     impactSpeed = Math.max(impactSpeed, Math.abs(ball.vx));
-    ball.x = width - ball.r - 2;
+    ball.x = canvasWidth - ball.r - 2;
     ball.vx = -ball.vx * SETTINGS.restitution;
     hit = true;
   }
@@ -190,15 +215,19 @@ function step(frameMs) {
     ball.y = ball.r + 2;
     ball.vy = -ball.vy * SETTINGS.restitution;
     hit = true;
-  } else if (ball.y + ball.r > height - 2) {
+  } else if (ball.y + ball.r > canvasHeight - 2) {
     impactSpeed = Math.max(impactSpeed, Math.abs(ball.vy));
-    ball.y = height - ball.r - 2;
+    ball.y = canvasHeight - ball.r - 2;
     ball.vy = -ball.vy * SETTINGS.restitution;
     hit = true;
   }
 
   if (hit && impactSpeed > SETTINGS.minImpactSpeedForVibrate) {
-    vibrateIfSupported(SETTINGS.vibrateMs);
+    const now = performance.now();
+    if (now - lastVibrateMs > SETTINGS.vibrateCooldownMs) {
+      lastVibrateMs = now;
+      vibrateIfSupported(SETTINGS.vibrateMs);
+    }
   }
 
   draw();
@@ -232,6 +261,8 @@ async function start() {
   startBtn.disabled = true;
   stopBtn.disabled = false;
 
+  updateInkColor();
+
   tiltAx = 0;
   tiltAy = 0;
   lastFrameMs = null;
@@ -264,12 +295,25 @@ startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);
 
 // Init
+updateInkColor();
 resetBallToCenter();
 if (!window.isSecureContext) {
   setStatus('Tip: gebruik HTTPS of localhost voor sensoren.');
 }
 
-// Keep canvas sized correctly on rotate/resize
+// Keep canvas sized correctly on rotate/resize.
+// Op mobiel kan resize vaak getriggerd worden (browser UI). Niet steeds recenteren.
 window.addEventListener('resize', () => {
-  resetBallToCenter();
+  needsResize = true;
+  if (!running) {
+    resetBallToCenter();
+  }
 });
+
+// Als het thema/kleuren veranderen (light/dark), refresh de kleur.
+try {
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  media.addEventListener('change', () => updateInkColor());
+} catch {
+  // ignore
+}

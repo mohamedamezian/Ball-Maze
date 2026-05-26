@@ -30,6 +30,11 @@ const WINDOW_MS = 5000;
 // Opslag van samples in het window.
 // We bewaren zowel accelerationIncludingGravity als rotationRate omdat acceleration vaak null kan zijn.
 const samples = [];
+let sampleStart = 0;
+
+// Throttle sampling: sommige devices sturen >100Hz.
+const SAMPLE_EVERY_MS = 16; // ~60Hz
+let lastSampleMs = 0;
 
 let rafId = null;
 
@@ -57,9 +62,15 @@ function nowMs() {
 
 function pruneOldSamples(cutoffMs) {
   // Verwijder alles ouder dan cutoff.
-  // (Bij ~60Hz en 5s gaat het om ~300 samples; simpele shift is prima.)
-  while (samples.length > 0 && samples[0].t < cutoffMs) {
-    samples.shift();
+  // Gebruik een start-index om shift() (O(n)) te vermijden.
+  while (sampleStart < samples.length && samples[sampleStart].t < cutoffMs) {
+    sampleStart += 1;
+  }
+
+  // Af en toe compacten om geheugen/GC netjes te houden.
+  if (sampleStart > 256) {
+    samples.splice(0, sampleStart);
+    sampleStart = 0;
   }
 }
 
@@ -85,6 +96,7 @@ function drawTimeSeries({
   ctx,
   series,
   yUnitLabel,
+  inkColor,
 }) {
   // Teken een simpele line chart van de laatste WINDOW_MS.
   const w = canvas.width;
@@ -101,15 +113,15 @@ function drawTimeSeries({
   const plotH = Math.max(1, h - padT - padB);
 
   // Inks op basis van body color (geen hard-coded kleuren)
-  const bodyColor = getComputedStyle(document.body).color;
-  ctx.strokeStyle = bodyColor;
-  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = inkColor;
+  ctx.fillStyle = inkColor;
   ctx.lineWidth = 2;
 
   // Bepaal y-range uit samples
   let minY = Infinity;
   let maxY = -Infinity;
-  for (const s of samples) {
+  for (let i = sampleStart; i < samples.length; i += 1) {
+    const s = samples[i];
     for (const def of series) {
       const v = def.get(s);
       if (v === null || v === undefined) continue;
@@ -175,7 +187,8 @@ function drawTimeSeries({
     ctx.beginPath();
     let started = false;
 
-    for (const s of samples) {
+    for (let i = sampleStart; i < samples.length; i += 1) {
+      const s = samples[i];
       if (s.t < tMin) continue;
       const v = def.get(s);
       if (v === null || v === undefined || !Number.isFinite(v)) {
@@ -219,6 +232,9 @@ function render() {
   const cutoff = nowMs() - WINDOW_MS;
   pruneOldSamples(cutoff);
 
+  // 1x per frame ink bepalen (i.p.v. per chart)
+  const inkColor = getComputedStyle(document.body).color;
+
   // AccelerationIncludingGravity chart
   if (accelChart) {
     resizeCanvasToDisplaySize(accelChart);
@@ -228,6 +244,7 @@ function render() {
         canvas: accelChart,
         ctx,
         yUnitLabel: 'm/s²',
+        inkColor,
         series: [
           { name: 'x', dash: [], get: (s) => s.ax },
           { name: 'y', dash: [8, 5], get: (s) => s.ay },
@@ -246,6 +263,7 @@ function render() {
         canvas: rotChart,
         ctx,
         yUnitLabel: 'deg/s',
+        inkColor,
         series: [
           { name: 'alpha', dash: [], get: (s) => s.ra },
           { name: 'beta', dash: [8, 5], get: (s) => s.rb },
@@ -298,24 +316,35 @@ function onMotion(event) {
 
   // Bewaar sample voor grafiek (5s window)
   const t = nowMs();
-  samples.push({
-    t,
-    // AccelerationIncludingGravity is meestal het meest consistent beschikbaar
-    ax: accelG.x ?? null,
-    ay: accelG.y ?? null,
-    az: accelG.z ?? null,
-    // RotationRate kan ontbreken
-    ra: rot.alpha ?? null,
-    rb: rot.beta ?? null,
-    rg: rot.gamma ?? null,
-  });
+  if (t - lastSampleMs >= SAMPLE_EVERY_MS) {
+    lastSampleMs = t;
 
-  pruneOldSamples(t - WINDOW_MS);
+    samples.push({
+      t,
+      // AccelerationIncludingGravity is meestal het meest consistent beschikbaar
+      ax: accelG.x ?? null,
+      ay: accelG.y ?? null,
+      az: accelG.z ?? null,
+      // RotationRate kan ontbreken
+      ra: rot.alpha ?? null,
+      rb: rot.beta ?? null,
+      rg: rot.gamma ?? null,
+    });
 
-  // Kleine hint als rotationrate ontbreekt
-  if (rotHint) {
-    const hasRot = samples.some((s) => Number.isFinite(s.ra) || Number.isFinite(s.rb) || Number.isFinite(s.rg));
-    rotHint.textContent = hasRot ? '' : 'Geen rotationRate data (niet ondersteund of geen permissie).';
+    pruneOldSamples(t - WINDOW_MS);
+
+    // Kleine hint als rotationrate ontbreekt
+    if (rotHint) {
+      let hasRot = false;
+      for (let i = sampleStart; i < samples.length; i += 1) {
+        const s = samples[i];
+        if (Number.isFinite(s.ra) || Number.isFinite(s.rb) || Number.isFinite(s.rg)) {
+          hasRot = true;
+          break;
+        }
+      }
+      rotHint.textContent = hasRot ? '' : 'Geen rotationRate data (niet ondersteund of geen permissie).';
+    }
   }
 
   const payload = {
@@ -365,6 +394,8 @@ async function start() {
 
     // Nieuwe sessie: buffer leegmaken
     samples.length = 0;
+    sampleStart = 0;
+    lastSampleMs = 0;
     if (rotHint) rotHint.textContent = '';
 
     attachListeners();
@@ -394,6 +425,8 @@ function stop() {
 
   // Buffer leegmaken en UI resetten
   samples.length = 0;
+  sampleStart = 0;
+  lastSampleMs = 0;
   if (rotHint) rotHint.textContent = '';
 
   startBtn.disabled = false;
