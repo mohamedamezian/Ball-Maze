@@ -40,6 +40,22 @@ let lastSwitchToggleMs = 0;
 const isIOS =
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+function isLikelyInAppBrowser() {
+  // Niet perfect, maar helpt bij Discord/Instagram/etc.
+  const ua = navigator.userAgent || '';
+  return /(Discord|Instagram|FBAN|FBAV|FB_IAB|Line\/|Twitter|TikTok|Snapchat)/i.test(ua);
+}
+
+function permissionHelpTextIOS() {
+  // Houd dit kort en praktisch (statusregel).
+  const bits = [
+    'iOS tip: open deze pagina in Safari (geen in-app browser).',
+    'Check ook: Instellingen → Safari → Motion & Orientation Access (aan).',
+    'Herlaad daarna de pagina en tik opnieuw op Start.',
+  ];
+  return bits.join(' ');
+}
+
 const AXIS = isIOS
   ? { invertX: false, invertY: true }
   : { invertX: true, invertY: false };
@@ -319,15 +335,24 @@ function detachListeners() {
 async function start() {
   if (running) return;
 
-  if (!window.isSecureContext) {
-    setStatus('Tip: gebruik HTTPS of localhost voor sensoren.');
-  } else {
-    setStatus('');
+  // iOS kan zonder secure context geen sensoren geven; voorkom verwarrende “denied” situaties.
+  if (isIOS && !window.isSecureContext) {
+    setStatus('iOS vereist HTTPS om sensoren te gebruiken. Open via een https:// URL.');
+    return;
   }
+
+  if (!window.isSecureContext) setStatus('Tip: gebruik HTTPS of localhost voor sensoren.');
+  else setStatus('');
 
   const permission = await requestIOSPermissionIfNeeded();
   if (!permission.ok) {
-    setStatus(`Geen toegang tot sensoren: ${permission.details}`);
+    if (isIOS) {
+      const inApp = isLikelyInAppBrowser();
+      const extra = inApp ? ' (je lijkt in een in-app browser te zitten)' : '';
+      setStatus(`Geen toegang tot sensoren${extra}: ${permission.details}. ${permissionHelpTextIOS()}`);
+    } else {
+      setStatus(`Geen toegang tot sensoren: ${permission.details}`);
+    }
     return;
   }
 
