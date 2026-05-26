@@ -34,12 +34,12 @@ let lastVibrateMs = 0;
 
 // Platform quirks
 // iOS en Android verschillen soms in hoe accelG.x/y aanvoelt in de praktijk.
-// We houden dit bewust simpel: Android/others -> flip X (zoals eerder nodig), iOS -> geen flips.
+// We houden dit bewust simpel: Android/others -> flip X (zoals eerder nodig), iOS -> flip Y.
 const isIOS =
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 const AXIS = isIOS
-  ? { invertX: false, invertY: false }
+  ? { invertX: false, invertY: true }
   : { invertX: true, invertY: false };
 
 // Laatste sensorwaarden (m/s^2)
